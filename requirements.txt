@@ -1,0 +1,3 @@
+flask>=2.3.0
+pywin32>=306
+schedule>=1.2.0

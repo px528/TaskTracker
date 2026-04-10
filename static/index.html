@@ -1,0 +1,1203 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TaskTracker — 任务时间线</title>
+  <style>
+    /* ── Reset & Base ─────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #1a1d23;
+      --surface: #22262f;
+      --surface2: #2a2f3a;
+      --border: #353b48;
+      --text: #e8eaf0;
+      --text-muted: #7a8099;
+      --accent: #4f8ef7;
+      --green: #2ecc71;
+      --red: #e74c3c;
+      --yellow: #f39c12;
+      --radius: 8px;
+      --font: 'Segoe UI', system-ui, sans-serif;
+    }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 14px;
+      min-height: 100vh;
+    }
+
+    /* ── Layout ───────────────────────────────────────────────── */
+    .app { display: flex; flex-direction: column; height: 100vh; }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-shrink: 0;
+    }
+    header h1 { font-size: 18px; font-weight: 600; letter-spacing: 0.5px; }
+    header h1 span { color: var(--accent); }
+
+    .status-pill {
+      display: flex; align-items: center; gap: 6px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 4px 12px;
+      font-size: 12px;
+    }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--text-muted);
+      transition: background 0.3s;
+    }
+    .status-dot.active { background: var(--green); box-shadow: 0 0 6px var(--green); }
+
+    .header-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+
+    .btn {
+      padding: 6px 14px; border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text);
+      cursor: pointer; font-size: 13px;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .btn:hover { background: var(--border); }
+    .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .btn.primary:hover { background: #3a7de8; }
+    .btn.danger { background: var(--red); border-color: var(--red); color: #fff; }
+
+    .main { display: flex; flex: 1; overflow: hidden; }
+
+    /* ── Sidebar ──────────────────────────────────────────────── */
+    .sidebar {
+      width: 260px; flex-shrink: 0;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      overflow-y: auto;
+    }
+    .sidebar-section { padding: 16px; border-bottom: 1px solid var(--border); }
+    .sidebar-section h3 { font-size: 11px; text-transform: uppercase;
+      letter-spacing: 1px; color: var(--text-muted); margin-bottom: 12px; }
+
+    /* Date range picker */
+    .date-row { display: flex; flex-direction: column; gap: 6px; }
+    .date-row label { font-size: 12px; color: var(--text-muted); }
+    .date-row input[type="date"],
+    .date-row input[type="time"] {
+      background: var(--surface2); border: 1px solid var(--border);
+      color: var(--text); border-radius: 6px; padding: 5px 8px;
+      font-size: 13px; width: 100%;
+    }
+    .quick-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+    .quick-btn {
+      padding: 4px 10px; border-radius: 4px; font-size: 12px;
+      border: 1px solid var(--border); background: var(--surface2);
+      color: var(--text); cursor: pointer;
+    }
+    .quick-btn:hover, .quick-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    /* Task list */
+    .task-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 0; border-bottom: 1px solid var(--border);
+      cursor: move;
+      transition: background 0.2s;
+    }
+    .task-item * { pointer-events: none; }
+    .task-item button { pointer-events: auto; }
+    .task-item.dragging { opacity: 0.5; }
+    .task-item.drag-over { background: var(--surface2); }
+    .drag-handle {
+      color: var(--text-muted);
+      cursor: grab;
+      font-size: 14px;
+      margin-right: 4px;
+    }
+    .drag-handle:active { cursor: grabbing; }
+    .task-color-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+    .task-info { flex: 1; min-width: 0; }
+    .task-info .name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .task-info .time { font-size: 11px; color: var(--text-muted); }
+    .task-switch-btn {
+      padding: 3px 8px; font-size: 11px; border-radius: 4px;
+      border: 1px solid var(--border); background: transparent;
+      color: var(--text-muted); cursor: pointer;
+    }
+    .task-switch-btn:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .task-switch-btn.active-task { background: var(--green); border-color: var(--green); color: #fff; }
+
+    /* Add task form */
+    .form-group { margin-bottom: 10px; }
+    .form-group label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+    .form-group input, .form-group textarea {
+      width: 100%; background: var(--surface2); border: 1px solid var(--border);
+      color: var(--text); border-radius: 6px; padding: 6px 8px; font-size: 13px;
+    }
+    .form-group input:focus, .form-group textarea:focus {
+      outline: none; border-color: var(--accent);
+    }
+    .color-row { display: flex; gap: 6px; flex-wrap: wrap; }
+    .color-swatch {
+      width: 22px; height: 22px; border-radius: 50%; cursor: pointer;
+      border: 2px solid transparent; transition: border-color 0.15s;
+    }
+    .color-swatch.selected { border-color: #fff; }
+
+    /* ── Chart area ───────────────────────────────────────────── */
+    .chart-area {
+      flex: 1; display: flex; flex-direction: column; overflow: hidden;
+    }
+    .chart-toolbar {
+      padding: 10px 16px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 12px;
+      background: var(--surface); flex-shrink: 0;
+    }
+    .chart-toolbar label { font-size: 12px; color: var(--text-muted); }
+    .chart-toolbar select {
+      background: var(--surface2); border: 1px solid var(--border);
+      color: var(--text); border-radius: 6px; padding: 4px 8px; font-size: 13px;
+    }
+    .zoom-btns { display: flex; gap: 4px; }
+    .zoom-btn {
+      width: 28px; height: 28px; border-radius: 6px;
+      border: 1px solid var(--border); background: var(--surface2);
+      color: var(--text); cursor: pointer; font-size: 16px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .zoom-btn:hover { background: var(--border); }
+
+    .chart-scroll-wrapper {
+      flex: 1; overflow: auto; position: relative;
+    }
+    #gantt-canvas {
+      display: block;
+      cursor: crosshair;
+    }
+
+    /* ── Tooltip ──────────────────────────────────────────────── */
+    #tooltip {
+      position: fixed; pointer-events: none;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 14px;
+      font-size: 12px; line-height: 1.6;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+      z-index: 1000; display: none; max-width: 280px;
+    }
+    #tooltip .tt-title { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+    #tooltip .tt-row { color: var(--text-muted); }
+    #tooltip .tt-row span { color: var(--text); }
+
+    /* ── Modal ────────────────────────────────────────────────── */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 2000; display: none;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 24px; width: 380px; max-width: 95vw;
+    }
+    .modal h2 { font-size: 16px; margin-bottom: 16px; }
+    .modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
+    /* ── Scrollbar ────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 8px; height: 10px; }
+    ::-webkit-scrollbar-track { background: var(--surface2); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb {
+      background: #5a6278; border-radius: 4px;
+      border: 2px solid var(--surface2);
+    }
+    ::-webkit-scrollbar-thumb:hover { background: #7a8299; }
+    ::-webkit-scrollbar-corner { background: var(--surface2); }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Header -->
+  <header>
+    <h1>Task<span>Tracker</span></h1>
+    <div class="status-pill">
+      <div class="status-dot" id="status-dot"></div>
+      <span id="status-text">检测中…</span>
+    </div>
+    <!-- Active window debug info -->
+    <div id="window-debug" style="
+      display:flex; align-items:center; gap:8px;
+      background:var(--surface2); border:1px solid var(--border);
+      border-radius:6px; padding:4px 10px; font-size:11px;
+      max-width:480px; overflow:hidden;
+    ">
+      <span style="color:var(--text-muted);flex-shrink:0">活跃窗口：</span>
+      <span id="debug-process" style="
+        color:#f39c12; font-weight:600; flex-shrink:0;
+        font-family:monospace; font-size:11px;
+      "></span>
+      <span style="color:var(--border);flex-shrink:0">│</span>
+      <span id="debug-title" style="
+        color:var(--text-muted); white-space:nowrap;
+        overflow:hidden; text-overflow:ellipsis;
+        font-family:monospace; font-size:11px;
+      "></span>
+      <span id="debug-match" style="
+        flex-shrink:0; padding:1px 6px; border-radius:3px;
+        font-size:10px; font-weight:600; display:none;
+      "></span>
+    </div>
+    <div class="header-right">
+<button class="btn primary" onclick="openAddTaskModal()">＋ 添加任务</button>
+    </div>
+  </header>
+
+  <div class="main">
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+
+      <!-- Date range -->
+      <div class="sidebar-section">
+        <h3>时间范围</h3>
+        <div class="date-row">
+          <label>开始日期</label>
+          <input type="date" id="date-from" />
+          <label>结束日期</label>
+          <input type="date" id="date-to" />
+        </div>
+        <div class="quick-btns">
+          <button class="quick-btn active" onclick="setQuickRange('today', this)">今天</button>
+          <button class="quick-btn" onclick="setQuickRange('yesterday', this)">昨天</button>
+          <button class="quick-btn" onclick="setQuickRange('week', this)">本周</button>
+          <button class="quick-btn" onclick="setQuickRange('month', this)">本月</button>
+        </div>
+        <button class="btn" style="width:100%;margin-top:10px" onclick="loadData()">🔄 刷新</button>
+      </div>
+
+      <!-- Task list -->
+      <div class="sidebar-section" style="flex:1">
+        <h3>任务列表</h3>
+        <div id="task-list"></div>
+      </div>
+
+    </aside>
+
+    <!-- Chart -->
+    <div class="chart-area">
+      <div class="chart-toolbar">
+        <label>缩放：</label>
+        <div class="zoom-btns">
+          <button class="zoom-btn" onclick="zoom(0.5)" title="缩小">−</button>
+          <button class="zoom-btn" onclick="zoom(2)" title="放大">＋</button>
+          <button class="zoom-btn" onclick="resetZoom()" title="重置">⊙</button>
+        </div>
+        <label style="margin-left:12px">时间粒度：</label>
+        <select id="granularity" onchange="renderChart()">
+          <option value="5">5 分钟</option>
+          <option value="15" selected>15 分钟</option>
+          <option value="30">30 分钟</option>
+          <option value="60">1 小时</option>
+        </select>
+        <button class="zoom-btn" onclick="scrollToNow()" title="跳到当前时间" style="width:auto;padding:0 10px;font-size:12px;">⏱ 现在</button>
+        <button id="compact-btn" class="zoom-btn" onclick="toggleCompactView()" title="紧凑视图：从最早记录到当前时间" style="width:auto;padding:0 10px;font-size:12px;">🔍 紧凑</button>
+        <span id="chart-info" style="margin-left:auto;font-size:12px;color:var(--text-muted)"></span>
+      </div>
+      <div class="chart-scroll-wrapper" id="chart-scroll">
+        <canvas id="gantt-canvas"></canvas>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Tooltip -->
+<div id="tooltip">
+  <div class="tt-title" id="tt-title"></div>
+  <div class="tt-row">开始：<span id="tt-start"></span></div>
+  <div class="tt-row">结束：<span id="tt-end"></span></div>
+  <div class="tt-row">时长：<span id="tt-dur"></span></div>
+  <div class="tt-row" id="tt-win-row">窗口：<span id="tt-win"></span></div>
+</div>
+
+<!-- Edit Task Modal -->
+<div class="modal-overlay" id="edit-task-modal">
+  <div class="modal">
+    <h2>编辑任务</h2>
+    <div class="form-group">
+      <label>任务 ID（不可修改）</label>
+      <input type="text" id="edit-task-id" disabled style="background:#2a2f3a;color:#7a8099;cursor:not-allowed" />
+    </div>
+    <div class="form-group">
+      <label>任务名称</label>
+      <input type="text" id="edit-task-name" placeholder="e.g. 写代码" />
+    </div>
+    <div class="form-group">
+      <label>颜色</label>
+      <div class="color-row" id="edit-color-swatches"></div>
+    </div>
+    <div class="form-group" id="edit-keywords-group">
+      <label>关键词（逗号分隔，匹配窗口标题或进程名）</label>
+      <input type="text" id="edit-task-keywords" placeholder="e.g. vscode, code.exe, github" />
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeEditTaskModal()">取消</button>
+      <button class="btn primary" onclick="saveEditTask()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Task Modal -->
+<div class="modal-overlay" id="add-task-modal">
+  <div class="modal">
+    <h2>添加任务</h2>
+    <div class="form-group">
+      <label>任务 ID（英文，唯一）</label>
+      <input type="text" id="new-task-id" placeholder="e.g. coding" />
+    </div>
+    <div class="form-group">
+      <label>任务名称</label>
+      <input type="text" id="new-task-name" placeholder="e.g. 写代码" />
+    </div>
+    <div class="form-group">
+      <label>颜色</label>
+      <div class="color-row" id="color-swatches"></div>
+    </div>
+    <div class="form-group">
+      <label>关键词（逗号分隔，匹配窗口标题或进程名）</label>
+      <input type="text" id="new-task-keywords" placeholder="e.g. vscode, code.exe, github" />
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeAddTaskModal()">取消</button>
+      <button class="btn primary" onclick="saveTask()">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+//  State
+// ═══════════════════════════════════════════════════════════════
+const COLORS = [
+  '#e74c3c','#e67e22','#f1c40f','#2ecc71','#1abc9c',
+  '#3498db','#9b59b6','#e91e63','#00bcd4','#8bc34a',
+  '#ff5722','#607d8b','#795548','#4f8ef7','#ff9800'
+];
+
+let segments = [];
+let tasks = [];
+let taskColorMap = {};
+let selectedColor = COLORS[0];
+let selectedEditColor = COLORS[0];
+let compactView = false;
+
+// Chart state
+let pixelsPerSecond = 0.05;   // zoom level
+let chartStartTs = 0;
+let chartEndTs = 0;
+const ROW_HEIGHT = 56;
+const LABEL_WIDTH = 140;
+const HEADER_HEIGHT = 36;
+const SEGMENT_H = 18;
+const CONNECTOR_OFFSET = ROW_HEIGHT / 2;
+
+// ═══════════════════════════════════════════════════════════════
+//  Date helpers
+// ═══════════════════════════════════════════════════════════════
+function toDateStr(d) {
+  return d.toISOString().slice(0, 10);
+}
+function todayStr() { return toDateStr(new Date()); }
+function yesterdayStr() {
+  const d = new Date(); d.setDate(d.getDate() - 1); return toDateStr(d);
+}
+function weekStartStr() {
+  const d = new Date();
+  d.setDate(d.getDate() - d.getDay() + (d.getDay() === 0 ? -6 : 1));
+  return toDateStr(d);
+}
+function monthStartStr() {
+  const d = new Date(); d.setDate(1); return toDateStr(d);
+}
+
+function setQuickRange(range, btn) {
+  document.querySelectorAll('.quick-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const from = document.getElementById('date-from');
+  const to = document.getElementById('date-to');
+  const today = todayStr();
+  if (range === 'today')     { from.value = today;          to.value = today; }
+  if (range === 'yesterday') { from.value = yesterdayStr(); to.value = yesterdayStr(); }
+  if (range === 'week')      { from.value = weekStartStr(); to.value = today; }
+  if (range === 'month')     { from.value = monthStartStr();to.value = today; }
+  loadData();
+}
+
+function getFromTs() {
+  const v = document.getElementById('date-from').value;
+  return v ? new Date(v + 'T00:00:00').getTime() / 1000 : (Date.now()/1000 - 86400);
+}
+function getToTs() {
+  const v = document.getElementById('date-to').value;
+  return v ? new Date(v + 'T23:59:59').getTime() / 1000 : Date.now()/1000;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  API calls
+// ═══════════════════════════════════════════════════════════════
+async function apiFetch(url, opts) {
+  const r = await fetch(url, opts);
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+async function loadData() {
+  const from = getFromTs();
+  const to = getToTs();
+  [segments, tasks] = await Promise.all([
+    apiFetch(`/api/segments?from=${from}&to=${to}`),
+    apiFetch('/api/tasks')
+  ]);
+  taskColorMap = {};
+  tasks.forEach(t => { taskColorMap[t.id] = t.color; });
+  renderTaskList();
+  renderChart();
+  // Auto-scroll to current time after render
+  requestAnimationFrame(scrollToNow);
+}
+
+async function pollStatus() {
+  try {
+    const s = await apiFetch('/api/status');
+    const dot = document.getElementById('status-dot');
+    const txt = document.getElementById('status-text');
+
+    // ── Tracking status pill ──────────────────────────────────
+    if (s.current_task) {
+      dot.classList.add('active');
+      txt.textContent = `正在追踪：${s.current_task.name}`;
+    } else {
+      dot.classList.remove('active');
+      txt.textContent = '未检测到任务';
+    }
+
+    // ── Active window debug bar ───────────────────────────────
+    const procEl  = document.getElementById('debug-process');
+    const titleEl = document.getElementById('debug-title');
+    const matchEl = document.getElementById('debug-match');
+
+    procEl.textContent  = s.process_name || '—';
+    titleEl.textContent = s.window_title || '—';
+    titleEl.title       = s.window_title || '';   // full text on hover
+
+    if (s.matched_task) {
+      matchEl.style.display      = 'inline';
+      matchEl.textContent        = '✓ ' + s.matched_task.name;
+      matchEl.style.background   = s.matched_task.color + '33';
+      matchEl.style.color        = s.matched_task.color;
+      matchEl.style.border       = '1px solid ' + s.matched_task.color + '66';
+    } else {
+      matchEl.style.display      = 'inline';
+      matchEl.textContent        = '✗ 未匹配';
+      matchEl.style.background   = 'rgba(231,76,60,0.15)';
+      matchEl.style.color        = '#e74c3c';
+      matchEl.style.border       = '1px solid rgba(231,76,60,0.3)';
+    }
+  } catch(e) {
+    document.getElementById('status-text').textContent = '服务离线';
+    document.getElementById('debug-process').textContent = '—';
+    document.getElementById('debug-title').textContent = '服务未响应';
+  }
+}
+
+async function editTask(taskId) {
+  // Find the task in the current tasks array
+  const task = tasks.find(t => t.id === taskId);
+  if (!task) {
+    alert('任务不存在');
+    return;
+  }
+  
+  // Parse keywords if it's a JSON string
+  let keywords = task.keywords;
+  if (typeof keywords === 'string') {
+    try {
+      keywords = JSON.parse(keywords);
+    } catch (e) {
+      keywords = [keywords];
+    }
+  }
+  
+  // Populate the edit form
+  document.getElementById('edit-task-id').value = task.id;
+  document.getElementById('edit-task-name').value = task.name;
+  document.getElementById('edit-task-keywords').value = Array.isArray(keywords) ? keywords.join(', ') : keywords;
+  
+  // Hide keywords field for 'others' task (it uses no keywords for matching)
+  const isOthers = task.id === 'others';
+  document.getElementById('edit-keywords-group').style.display = isOthers ? 'none' : '';
+  
+  // Set selected color
+  selectedEditColor = task.color;
+  
+  // Render color swatches for edit modal
+  const swatchContainer = document.getElementById('edit-color-swatches');
+  swatchContainer.innerHTML = COLORS.map(c => `
+    <div class="color-swatch ${c === task.color ? 'selected' : ''}"
+         style="background:${c}"
+         onclick="selectEditColor('${c}', this)"></div>
+  `).join('');
+  
+  // Show the modal
+  document.getElementById('edit-task-modal').classList.add('open');
+}
+
+function closeEditTaskModal() {
+  document.getElementById('edit-task-modal').classList.remove('open');
+}
+
+function selectEditColor(color, el) {
+  selectedEditColor = color;
+  document.querySelectorAll('#edit-color-swatches .color-swatch').forEach(s => s.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+async function saveEditTask() {
+  const id = document.getElementById('edit-task-id').value.trim();
+  const name = document.getElementById('edit-task-name').value.trim();
+  const kwRaw = document.getElementById('edit-task-keywords').value.trim();
+  
+  if (!name) { 
+    alert('请填写任务名称'); 
+    return; 
+  }
+  
+  const isOthers = id === 'others';
+  const keywords = isOthers ? [] : kwRaw.split(',').map(k => k.trim()).filter(Boolean);
+  
+  if (!isOthers && keywords.length === 0) {
+    alert('请至少填写一个关键词');
+    return;
+  }
+
+  try {
+    await apiFetch('/api/tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, name, color: selectedEditColor, keywords })
+    });
+    closeEditTaskModal();
+    loadData();
+  } catch(e) {
+    alert('保存失败：' + e.message);
+  }
+}
+
+async function deleteTask(taskId) {
+  if (!confirm('确定要删除这个任务吗？任务配置将被删除，历史记录数据不受影响。')) {
+    return;
+  }
+  try {
+    await apiFetch(`/api/tasks/${taskId}`, { method: 'DELETE' });
+    loadData();
+  } catch(e) {
+    alert('删除任务失败：' + e.message);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Task list sidebar
+// ═══════════════════════════════════════════════════════════════
+function renderTaskList() {
+  const el = document.getElementById('task-list');
+  // Compute total seconds per task
+  const totals = {};
+  segments.forEach(s => {
+    totals[s.task_id] = (totals[s.task_id] || 0) + s.duration_seconds;
+  });
+
+  el.innerHTML = tasks.map((t, idx) => {
+    const secs = totals[t.id] || 0;
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    const timeStr = h > 0 ? `${h}h ${m}m` : `${m}m`;
+    return `
+      <div class="task-item" draggable="true" data-task-id="${t.id}" data-task-index="${idx}">
+        <span class="drag-handle">⋮⋮</span>
+        <div class="task-color-dot" style="background:${t.color}"></div>
+        <div class="task-info">
+          <div class="name">${t.name}</div>
+          <div class="time">${timeStr}</div>
+        </div>
+        <button class="btn" style="padding:2px 8px;font-size:11px;margin-right:4px" onclick="editTask('${t.id}')">编辑</button>
+        <button class="btn" style="padding:2px 8px;font-size:11px;background:var(--red);border-color:var(--red);color:#fff" onclick="deleteTask('${t.id}')">删除</button>
+      </div>`;
+  }).join('');
+  
+  // Add drag and drop event listeners
+  attachDragListeners();
+}
+
+function attachDragListeners() {
+  const taskItems = document.querySelectorAll('.task-item');
+  
+  taskItems.forEach(item => {
+    item.addEventListener('dragstart', handleDragStart);
+    item.addEventListener('dragend', handleDragEnd);
+    item.addEventListener('dragover', handleDragOver);
+    item.addEventListener('drop', handleDrop);
+    item.addEventListener('dragleave', handleDragLeave);
+  });
+}
+
+let draggedItem = null;
+
+function handleDragStart(e) {
+  draggedItem = this;
+  this.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', this.dataset.taskId);
+}
+
+function handleDragEnd(e) {
+  this.classList.remove('dragging');
+  document.querySelectorAll('.task-item').forEach(item => {
+    item.classList.remove('drag-over');
+  });
+}
+
+function handleDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  return false;
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  e.stopPropagation();
+
+  const targetItem = e.currentTarget;
+  if (draggedItem && draggedItem !== targetItem) {
+    const allItems = Array.from(document.querySelectorAll('.task-item'));
+    const draggedIndex = allItems.indexOf(draggedItem);
+    const targetIndex = allItems.indexOf(targetItem);
+
+    if (draggedIndex < targetIndex) {
+      targetItem.parentNode.insertBefore(draggedItem, targetItem.nextSibling);
+    } else {
+      targetItem.parentNode.insertBefore(draggedItem, targetItem);
+    }
+
+    saveTaskOrder();
+  }
+
+  return false;
+}
+
+function handleDragLeave(e) {
+  this.classList.remove('drag-over');
+}
+
+async function saveTaskOrder() {
+  const taskItems = document.querySelectorAll('.task-item');
+  const newOrder = Array.from(taskItems).map(item => item.dataset.taskId);
+  
+  try {
+    await apiFetch('/api/tasks/reorder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task_order: newOrder })
+    });
+    
+    // Update the tasks array order to match the new DOM order
+    const taskMap = {};
+    tasks.forEach(t => { taskMap[t.id] = t; });
+    tasks = newOrder.map(id => taskMap[id]).filter(t => t);
+    
+    // Re-render the chart with the new task order
+    renderChart();
+  } catch(e) {
+    console.error('保存任务顺序失败：', e);
+    alert('保存任务顺序失败：' + e.message);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Gantt Chart Renderer (Canvas)
+// ═══════════════════════════════════════════════════════════════
+function zoom(factor) {
+  pixelsPerSecond *= factor;
+  // Limit zoom to prevent canvas size overflow (max ~32767px in most browsers)
+  pixelsPerSecond = Math.max(0.002, Math.min(pixelsPerSecond, 2));
+  renderChart();
+}
+function resetZoom() {
+  // Fit the visible range into the chart width
+  const wrapper = document.getElementById('chart-scroll');
+  const availW = wrapper.clientWidth - LABEL_WIDTH - 20;
+  const range = chartEndTs - chartStartTs;
+  if (range > 0) pixelsPerSecond = availW / range;
+  renderChart();
+}
+
+function formatTime(ts) {
+  const d = new Date(ts * 1000);
+  return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+}
+function formatDuration(secs) {
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = Math.floor(secs % 60);
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+function formatDateTime(ts) {
+  return new Date(ts * 1000).toLocaleString('zh-CN');
+}
+
+function renderChart() {
+  const canvas = document.getElementById('gantt-canvas');
+  const wrapper = document.getElementById('chart-scroll');
+  const dpr = window.devicePixelRatio || 1;
+
+  if (tasks.length === 0) {
+    canvas.width = wrapper.clientWidth;
+    canvas.height = 200;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#7a8099';
+    ctx.font = '14px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillText('暂无任务数据，请先添加任务并配置关键词', canvas.width / 2, 100);
+    return;
+  }
+
+  // Determine time range
+  const fromTs = getFromTs();
+  const toTs = getToTs();
+  if (compactView && segments.length > 0) {
+    const earliest = segments.reduce((min, s) => s.start_time < min ? s.start_time : min, Infinity);
+    const nowTs = Date.now() / 1000;
+    const latest = (nowTs >= fromTs && nowTs <= toTs)
+      ? nowTs
+      : segments.reduce((max, s) => s.end_time > max ? s.end_time : max, 0);
+    chartStartTs = Math.max(fromTs, earliest - 300);
+    chartEndTs = Math.min(toTs, latest + 300);
+    if (chartEndTs - chartStartTs < 1800) chartEndTs = chartStartTs + 1800;
+  } else {
+    chartStartTs = fromTs;
+    chartEndTs = toTs;
+  }
+
+  const totalSecs = chartEndTs - chartStartTs;
+  const chartW = Math.max(wrapper.clientWidth - LABEL_WIDTH, totalSecs * pixelsPerSecond);
+  const totalW = LABEL_WIDTH + chartW;
+  const totalH = HEADER_HEIGHT + tasks.length * ROW_HEIGHT + 20;
+
+  // Prevent canvas size overflow (browser limit ~32767px)
+  const MAX_CANVAS_SIZE = 32000;
+  if (totalW * dpr > MAX_CANVAS_SIZE || totalH * dpr > MAX_CANVAS_SIZE) {
+    // Canvas too large, show warning
+    canvas.width = wrapper.clientWidth;
+    canvas.height = 200;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#e74c3c';
+    ctx.font = '14px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillText('⚠ 缩放过大，请缩小后查看', canvas.width / 2, 100);
+    ctx.fillStyle = '#7a8099';
+    ctx.font = '12px Segoe UI';
+    ctx.fillText('提示：点击 ⊙ 按钮重置缩放，或使用 − 按钮缩小', canvas.width / 2, 130);
+    return;
+  }
+
+  canvas.style.width = totalW + 'px';
+  canvas.style.height = totalH + 'px';
+  canvas.width = totalW * dpr;
+  canvas.height = totalH * dpr;
+
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  // Background
+  ctx.fillStyle = '#1a1d23';
+  ctx.fillRect(0, 0, totalW, totalH);
+
+  // ── Draw time axis ──────────────────────────────────────────
+  const granMin = parseInt(document.getElementById('granularity').value);
+  const granSec = granMin * 60;
+  const tickCount = Math.ceil(totalSecs / granSec) + 1;
+
+  ctx.fillStyle = '#22262f';
+  ctx.fillRect(LABEL_WIDTH, 0, chartW, HEADER_HEIGHT);
+
+  ctx.strokeStyle = '#353b48';
+  ctx.lineWidth = 1;
+
+  for (let i = 0; i <= tickCount; i++) {
+    const ts = chartStartTs + i * granSec;
+    const x = LABEL_WIDTH + (ts - chartStartTs) * pixelsPerSecond;
+    if (x > totalW) break;
+
+    // Tick line
+    ctx.beginPath();
+    ctx.moveTo(x, HEADER_HEIGHT - 8);
+    ctx.lineTo(x, totalH);
+    ctx.strokeStyle = '#2a2f3a';
+    ctx.stroke();
+
+    // Time label
+    ctx.fillStyle = '#7a8099';
+    ctx.font = '11px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillText(formatTime(ts), x, HEADER_HEIGHT - 12);
+  }
+
+  // Header separator
+  ctx.strokeStyle = '#353b48';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, HEADER_HEIGHT);
+  ctx.lineTo(totalW, HEADER_HEIGHT);
+  ctx.stroke();
+
+  // ── Draw task rows ──────────────────────────────────────────
+  tasks.forEach((task, rowIdx) => {
+    const rowY = HEADER_HEIGHT + rowIdx * ROW_HEIGHT;
+    const midY = rowY + ROW_HEIGHT / 2;
+
+    // Row background (alternating)
+    ctx.fillStyle = rowIdx % 2 === 0 ? '#1e2229' : '#1a1d23';
+    ctx.fillRect(0, rowY, totalW, ROW_HEIGHT);
+
+    // Row separator
+    ctx.strokeStyle = '#2a2f3a';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, rowY + ROW_HEIGHT);
+    ctx.lineTo(totalW, rowY + ROW_HEIGHT);
+    ctx.stroke();
+
+    // Label area
+    ctx.fillStyle = '#22262f';
+    ctx.fillRect(0, rowY, LABEL_WIDTH, ROW_HEIGHT);
+
+    // Color dot
+    ctx.beginPath();
+    ctx.arc(16, midY, 6, 0, Math.PI * 2);
+    ctx.fillStyle = task.color;
+    ctx.fill();
+
+    // Task name
+    ctx.fillStyle = '#e8eaf0';
+    ctx.font = '13px Segoe UI';
+    ctx.textAlign = 'left';
+    ctx.fillText(task.name, 30, midY + 4);
+
+    // Timeline base line
+    ctx.strokeStyle = '#353b48';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(LABEL_WIDTH, midY);
+    ctx.lineTo(totalW, midY);
+    ctx.stroke();
+
+    // Draw segments for this task
+    const taskSegs = segments.filter(s => s.task_id === task.id);
+    taskSegs.forEach(seg => {
+      const x1 = LABEL_WIDTH + (seg.start_time - chartStartTs) * pixelsPerSecond;
+      const x2 = LABEL_WIDTH + (seg.end_time - chartStartTs) * pixelsPerSecond;
+      const w = Math.max(x2 - x1, 3);
+
+      // Segment bar
+      const barY = midY - SEGMENT_H / 2;
+      const r = 4;
+      ctx.beginPath();
+      ctx.roundRect(x1, barY, w, SEGMENT_H, r);
+      ctx.fillStyle = task.color;
+      ctx.fill();
+
+      // Highlight top edge
+      ctx.beginPath();
+      ctx.roundRect(x1, barY, w, 3, [r, r, 0, 0]);
+      ctx.fillStyle = lightenColor(task.color, 40);
+      ctx.fill();
+    });
+  });
+
+  // ── Draw transition connectors ──────────────────────────────
+  // Sort all segments by start time
+  const allSegs = [...segments].sort((a, b) => a.start_time - b.start_time);
+  for (let i = 0; i < allSegs.length - 1; i++) {
+    const cur = allSegs[i];
+    const nxt = allSegs[i + 1];
+    if (cur.task_id === nxt.task_id) continue;
+
+    const curRowIdx = tasks.findIndex(t => t.id === cur.task_id);
+    const nxtRowIdx = tasks.findIndex(t => t.id === nxt.task_id);
+    if (curRowIdx < 0 || nxtRowIdx < 0) continue;
+
+    const x1 = LABEL_WIDTH + (cur.end_time - chartStartTs) * pixelsPerSecond;
+    const y1 = HEADER_HEIGHT + curRowIdx * ROW_HEIGHT + ROW_HEIGHT / 2;
+    const x2 = LABEL_WIDTH + (nxt.start_time - chartStartTs) * pixelsPerSecond;
+    const y2 = HEADER_HEIGHT + nxtRowIdx * ROW_HEIGHT + ROW_HEIGHT / 2;
+
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    // Bezier curve for smooth transition
+    const cpX = (x1 + x2) / 2;
+    ctx.bezierCurveTo(cpX, y1, cpX, y2, x2, y2);
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 3]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Arrow head at destination
+    const angle = Math.atan2(y2 - y1, x2 - x1);
+    const aLen = 6;
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - aLen * Math.cos(angle - 0.4), y2 - aLen * Math.sin(angle - 0.4));
+    ctx.lineTo(x2 - aLen * Math.cos(angle + 0.4), y2 - aLen * Math.sin(angle + 0.4));
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    ctx.fill();
+  }
+
+  // ── Label divider ───────────────────────────────────────────
+  ctx.strokeStyle = '#353b48';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(LABEL_WIDTH, 0);
+  ctx.lineTo(LABEL_WIDTH, totalH);
+  ctx.stroke();
+
+  // Update info
+  document.getElementById('chart-info').textContent =
+    `共 ${segments.length} 段记录 | 范围 ${formatTime(chartStartTs)} – ${formatTime(chartEndTs)}`;
+}
+
+// ── Color utility ─────────────────────────────────────────────
+function lightenColor(hex, amount) {
+  const num = parseInt(hex.replace('#',''), 16);
+  const r = Math.min(255, (num >> 16) + amount);
+  const g = Math.min(255, ((num >> 8) & 0xff) + amount);
+  const b = Math.min(255, (num & 0xff) + amount);
+  return `rgb(${r},${g},${b})`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Tooltip on hover
+// ═══════════════════════════════════════════════════════════════
+document.getElementById('gantt-canvas').addEventListener('mousemove', (e) => {
+  const canvas = e.target;
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / (parseFloat(canvas.style.width) || canvas.width);
+  const mx = (e.clientX - rect.left);
+  const my = (e.clientY - rect.top);
+
+  const tooltip = document.getElementById('tooltip');
+
+  // Find which row
+  const rowIdx = Math.floor((my - HEADER_HEIGHT) / ROW_HEIGHT);
+  if (rowIdx < 0 || rowIdx >= tasks.length) {
+    tooltip.style.display = 'none';
+    return;
+  }
+  const task = tasks[rowIdx];
+  const taskSegs = segments.filter(s => s.task_id === task.id);
+
+  // Find which segment was hovered
+  const hovered = taskSegs.find(seg => {
+    const x1 = LABEL_WIDTH + (seg.start_time - chartStartTs) * pixelsPerSecond;
+    const x2 = LABEL_WIDTH + (seg.end_time - chartStartTs) * pixelsPerSecond;
+    return mx >= x1 && mx <= Math.max(x2, x1 + 3);
+  });
+
+  if (hovered) {
+    document.getElementById('tt-title').textContent = task.name;
+    document.getElementById('tt-start').textContent = formatDateTime(hovered.start_time);
+    document.getElementById('tt-end').textContent = formatDateTime(hovered.end_time);
+    document.getElementById('tt-dur').textContent = formatDuration(hovered.duration_seconds);
+    const winTitle = hovered.window_title || '';
+    document.getElementById('tt-win').textContent = winTitle.length > 50 ? winTitle.slice(0, 50) + '…' : winTitle;
+    document.getElementById('tt-win-row').style.display = winTitle ? '' : 'none';
+
+    tooltip.style.display = 'block';
+    const tx = e.clientX + 14;
+    const ty = e.clientY - 10;
+    tooltip.style.left = Math.min(tx, window.innerWidth - 300) + 'px';
+    tooltip.style.top = ty + 'px';
+  } else {
+    tooltip.style.display = 'none';
+  }
+});
+
+document.getElementById('gantt-canvas').addEventListener('mouseleave', () => {
+  document.getElementById('tooltip').style.display = 'none';
+});
+
+// ═══════════════════════════════════════════════════════════════
+//  Add Task Modal
+// ═══════════════════════════════════════════════════════════════
+function openAddTaskModal() {
+  // Render color swatches
+  const swatchContainer = document.getElementById('color-swatches');
+  swatchContainer.innerHTML = COLORS.map(c => `
+    <div class="color-swatch ${c === selectedColor ? 'selected' : ''}"
+         style="background:${c}"
+         onclick="selectColor('${c}', this)"></div>
+  `).join('');
+  document.getElementById('add-task-modal').classList.add('open');
+}
+
+function closeAddTaskModal() {
+  document.getElementById('add-task-modal').classList.remove('open');
+  document.getElementById('new-task-id').value = '';
+  document.getElementById('new-task-name').value = '';
+  document.getElementById('new-task-keywords').value = '';
+}
+
+function selectColor(color, el) {
+  selectedColor = color;
+  document.querySelectorAll('#color-swatches .color-swatch').forEach(s => s.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+async function saveTask() {
+  const id = document.getElementById('new-task-id').value.trim();
+  const name = document.getElementById('new-task-name').value.trim();
+  const kwRaw = document.getElementById('new-task-keywords').value.trim();
+  if (!id || !name) { alert('请填写任务 ID 和名称'); return; }
+  const keywords = kwRaw.split(',').map(k => k.trim()).filter(Boolean);
+
+  try {
+    await apiFetch('/api/tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, name, color: selectedColor, keywords })
+    });
+    closeAddTaskModal();
+    loadData();
+  } catch(e) {
+    alert('保存失败：' + e.message);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Compact view toggle
+// ═══════════════════════════════════════════════════════════════
+function toggleCompactView() {
+  compactView = !compactView;
+  const btn = document.getElementById('compact-btn');
+  if (compactView) {
+    btn.style.background = 'var(--accent)';
+    btn.style.borderColor = 'var(--accent)';
+    btn.style.color = '#fff';
+    btn.title = '完整视图：恢复全天范围';
+    btn.textContent = '📅 完整';
+
+    // Auto-zoom: fit the compact time range into the visible chart area
+    if (segments.length > 0) {
+      const fromTs = getFromTs();
+      const toTs   = getToTs();
+      const earliest = segments.reduce((min, s) => s.start_time < min ? s.start_time : min, Infinity);
+      const nowTs  = Date.now() / 1000;
+      const latest = (nowTs >= fromTs && nowTs <= toTs)
+        ? nowTs
+        : segments.reduce((max, s) => s.end_time > max ? s.end_time : max, 0);
+      let cStart = Math.max(fromTs, earliest - 300);
+      let cEnd   = Math.min(toTs, latest + 300);
+      if (cEnd - cStart < 1800) cEnd = cStart + 1800;
+
+      const wrapper = document.getElementById('chart-scroll');
+      const availW  = wrapper.clientWidth - LABEL_WIDTH - 20;
+      const totalSecs = cEnd - cStart;
+      if (availW > 0 && totalSecs > 0) {
+        pixelsPerSecond = availW / totalSecs;
+      }
+    }
+  } else {
+    btn.style.background = '';
+    btn.style.borderColor = '';
+    btn.style.color = '';
+    btn.title = '紧凑视图：从最早记录到当前时间';
+    btn.textContent = '🔍 紧凑';
+  }
+  renderChart();
+  if (compactView) requestAnimationFrame(scrollToNow);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Scroll to current time
+// ═══════════════════════════════════════════════════════════════
+function scrollToNow() {
+  const wrapper = document.getElementById('chart-scroll');
+  const now = Date.now() / 1000;
+  if (chartStartTs === 0 || now < chartStartTs) return;
+  const x = LABEL_WIDTH + (now - chartStartTs) * pixelsPerSecond;
+  // Center the "now" position in the visible area
+  const targetScroll = x - wrapper.clientWidth / 2;
+  wrapper.scrollTo({ left: Math.max(0, targetScroll), behavior: 'smooth' });
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Keyboard shortcuts
+// ═══════════════════════════════════════════════════════════════
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    closeAddTaskModal();
+    closeEditTaskModal();
+  }
+  if (e.key === '+' || e.key === '=') zoom(1.5);
+  if (e.key === '-') zoom(1 / 1.5);
+  if (e.key === '0') resetZoom();
+  if (e.key === 'r' || e.key === 'R') loadData();
+});
+
+// ═══════════════════════════════════════════════════════════════
+//  Auto-refresh
+// ═══════════════════════════════════════════════════════════════
+let autoRefreshTimer = null;
+
+function startAutoRefresh() {
+  if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+  autoRefreshTimer = setInterval(() => {
+    loadData();
+    pollStatus();
+  }, 10000); // refresh every 10s
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Init
+// ═══════════════════════════════════════════════════════════════
+(function init() {
+  // Set default date range to today
+  const today = todayStr();
+  document.getElementById('date-from').value = today;
+  document.getElementById('date-to').value = today;
+
+  // Initial load
+  loadData();
+  pollStatus();
+  startAutoRefresh();
+
+  // Poll status every 5s
+  setInterval(pollStatus, 5000);
+
+  // Redraw "now" line every 30s
+  setInterval(() => {
+    renderChart();
+  }, 30000);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,49 @@
+{
+  "tasks": [
+    {
+      "id": "TeamsOutlook",
+      "name": "TeamsOutlook",
+      "color": "#2ecc71",
+      "keywords": [
+        "ms-teams.exe",
+        "OUTLOOK.exe"
+      ]
+    },
+    {
+      "id": "code",
+      "name": "Coding",
+      "color": "#e74c3c",
+      "keywords": [
+        "Code.exe"
+      ]
+    },
+    {
+      "id": "search",
+      "name": "Learn",
+      "color": "#3498db",
+      "keywords": [
+        "msedge.exe",
+        "Chatbox.exe"
+      ]
+    },
+    {
+      "id": "Git",
+      "name": "Git",
+      "color": "#9b59b6",
+      "keywords": [
+        "GitHubDesktop.exe"
+      ]
+    },
+    {
+      "id": "others",
+      "name": "Others",
+      "color": "#95a5a6",
+      "keywords": []
+    }
+  ],
+  "settings": {
+    "poll_interval_seconds": 3,
+    "idle_threshold_seconds": 120,
+    "min_segment_seconds": 5
+  }
+}
